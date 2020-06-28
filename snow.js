@@ -1,3 +1,7 @@
+/* JS Snow by Nader Abbasi 
+ * Nader.Abbasi68@gmail.com
+ */
+
 var Cloud = (function () {
     let _cloud;
     let _docFragment;
