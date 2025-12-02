@@ -3,259 +3,176 @@
  */
 
 var Cloud = (function () {
-    let _cloud;
-    let _docFragment;
-
-    function Cloud(environment) {
-        if (!environment) {
-            throw new Error('Environment or container should no be null or undefined.');
+    class SnowFlake {
+        constructor(container, geo) {
+            this._container = container;
+            this._geo = geo;
+            this.flakeEl = null;
+            this.isMelting = false;
+            this.isUpdatingGeoCoord = false;
+            this.position = { top: 0, left: 0 };
+            this.movementCoefficient = SnowFlake.rand(0, Math.PI);
+            this.create();
         }
 
-        _cloud = environment;
-        _cloud.style.overflow = 'hidden';
-        _docFragment = document.createDocumentFragment();
-
-        this.numOfFlakes = 500;
-        this.flakes = [];
-        this.init();
-    }
-
-    Cloud.prototype.init = function () {
-        let geoCoord = {
-            width: _cloud.style.width || _cloud.offsetWidth,
-            height: _cloud.style.height || _cloud.offsetHeight
-        };
-
-        for (let i = 0; i < this.numOfFlakes; i++) {
-            let f = new SnowFlake(_docFragment, geoCoord);
-            f.create();
-
-            this.flakes.push(f);
+        static rand(min, max, round = false) {
+            const n = Math.random() * (max - min) + min;
+            return round ? Math.floor(n) : n;
         }
 
-        _cloud.appendChild(_docFragment);
-
-        // when the window resized we should update the geo coord of each flakes
-        window.addEventListener('resize', (el, ev) => {
-            const cloudWidth = _cloud.style.width || _cloud.offsetWidth;
-            const cloudHeight = _cloud.style.height || _cloud.offsetHeight;
-            if (cloudWidth === geoCoord.width && cloudHeight === geoCoord.height) {
-                return;
-            }
-
-            geoCoord = {
-                width: cloudWidth,
-                height: cloudHeight
-            };
-            this.flakes.forEach(f => f.refreshGeoCoord(geoCoord));
-        });
-    }
-
-    Cloud.prototype.rain = function () {
-        const that = this;
-
-        function startRaining() {
-            that.flakes.forEach(f => f.fallDown());
-            requestAnimationFrame(startRaining)
-        }
-
-        startRaining();
-    };
-
-    /** Flake objct */
-
-    var SnowFlake = (function () {
-        let _cloud;
-        let _geoCoord;
-        let maxVelocity = 3;
-        let maxWeight = 10;
-
-        /** The main DOM element that reperesents a snow flake */
-        this.flakeEl;
-
-        /**
-         * Shows that the current flake is in melting mode, so we should stop the running of the fallDown method
-         * we checked this flag in the fallDown method. and reset its value when the melting process have done.
-         */
-        this.isMelting = false;
-
-        /**
-         * this is for those flakes that are in the melting mode, and in this mode they started to melting by
-         * decrease the opacity. and because this done in a timer in the browser contex,
-         * they stayed in the middle of their container-_cloud- (if _cloud resized and bigger), so we set this to true and
-         * in that timer we checked this and stop the melting process and fallDown the flake.
-         */
-        this.isUpadingGeoCoord = false;
-
-        function SnowFlake(cloud, geoCoord) {
-            _cloud = cloud;
-            _geoCoord = geoCoord;
-
-            this.position = {
-                top: 0,
-                left: 0
-            }
-
-            this.movementCoefficient = generateRandomNumber(0, Math.PI);
-        }
-
-        // public functions
-
-        SnowFlake.prototype.create = function () {
-            this.createFlake();
-            _cloud.appendChild(this.flakeEl);
-        }
-
-        SnowFlake.prototype.fallDown = function () {
-            if (this.isMelting) {
-                return;
-            }
-
-            // to support responsive env, I each time calculate the height
-            let height = _geoCoord.height;
-            let environmentHeight = parseInt(height);
-
-            // if the flake arrived the end of its container, it should be melt
-            if (parseInt(this.position.top) + this.weight > environmentHeight) {
-                this.melt();
-            } else {
-                this.position.top += this.velocity;
-                this.flakeEl.style.top = this.position.top + 'px';
-
-                /** 
-                 * to simulate the air resistance I create a little movement coefficient across the Y axis
-                 * this is just to show the air resistance of each snow flake.
-                */
-                let airResistance = Math.cos(this.movementCoefficient);
-                this.position.left += airResistance;
-                this.flakeEl.style.left = this.position.left + 'px';
-
-                /**
-                 * after each movement I should change the movement coefficient to show 
-                 * that each flake naturally fall down,
-                 * If we don't do this, each flake fall down in a certain way (to left or to right),
-                 * but with this change, each time it can be move to the right or move to the left
-                 */
-                this.movementCoefficient += 0.01;
-            }
-        }
-
-        SnowFlake.prototype.refreshGeoCoord = function (geoCoord) {
-            _geoCoord = geoCoord;
-            this.isUpadingGeoCoord = true;
-        }
-
-        /*
-         * Private functions 
-         * To decrease the memory footprint I add these private functions to the proto object,
-         * because there are many of the SnowFlake objects at a same time.
-         * */
-
-        SnowFlake.prototype.createFlake = function () {
+        create() {
             this.flakeEl = document.createElement('div');
-            this.configFlake();
+            const s = this.flakeEl.style;
+            s.position = 'absolute';
+            s.backgroundColor = 'white';
+            s.borderRadius = '50%';
+            s.willChange = 'transform, opacity';
+            this.refresh();
+            this._container.appendChild(this.flakeEl);
         }
 
-        SnowFlake.prototype.configFlake = function () {
-            let style = this.flakeEl.style;
-            style.position = 'absolute';
-            style.backgroundColor = 'white';
-            style.borderRadius = '50%';
-            style.margin = '2px';
+        refresh() {
+            const maxV = 3;
+            const maxW = 10;
+            this.weight = SnowFlake.rand(1, maxW);
+            this.velocity = (this.weight / maxW) * maxV;
 
-            this.refreshFlake();
-        }
-
-        SnowFlake.prototype.refreshFlake = function () {
-            this.weight = generateRandomNumber(1, maxWeight);
-            this.velocity = (this.weight / maxWeight) * maxVelocity;
-
-            let style = this.flakeEl.style;
-            style.width = this.weight + 'px';
-            style.height = this.weight + 'px';
-            let opacity = generateRandomNumber(0, 1, false);
-
-            /** we set the opacity of each flake based on its size. we do this to give a 3D perspective to the app
-             * and also when the current flake begin melting, this process should be based on its size,
-             * the more flake is big, the more take time to melt.
-            */
-            if (this.weight < (maxWeight / 4)) {
-                if (opacity === 0) {
-                    opacity += .2;
-                }
-            } else if (this.weight < (maxWeight / 2)) {
-                if (opacity < .5) {
-                    opacity = .5 + opacity;
-                }
+            const s = this.flakeEl.style;
+            s.width = this.weight + 'px';
+            s.height = this.weight + 'px';
+            let opacity = SnowFlake.rand(0, 1, false);
+            if (this.weight < (maxW / 4)) {
+                if (opacity === 0) opacity += 0.2;
+            } else if (this.weight < (maxW / 2)) {
+                if (opacity < 0.5) opacity = 0.5 + opacity;
             } else {
                 opacity = 1;
             }
-            style.opacity = opacity;
+            s.opacity = opacity;
 
             this.position.top = -this.weight;
-            style.top = this.position.top + 'px';
-            let left = generateRandomNumber(1, _geoCoord.width);
-            style.left = left + 'px';
-
+            const left = SnowFlake.rand(1, this._geo.width);
             this.position.left = left;
+            s.transform = `translate3d(${left}px, ${this.position.top}px, 0)`;
         }
 
-        SnowFlake.prototype.dispose = function () {
-            this.refreshFlake();
+        refreshGeoCoord(geo) {
+            this._geo = geo;
+            this.isUpdatingGeoCoord = true;
         }
 
-        SnowFlake.prototype.melt = function () {
-            /** To simulate melting of a flake, first we waiting for a random ms and then dispose the flake */
-            this.isMelting = true;
-            let waiting = generateRandomNumber(1, this.weight);
-            let that = this;
-
-            if (!this.flakeEl.style.opacity) {
-                this.flakeEl.style.opacity = 1;
+        fall() {
+            if (this.isMelting) return;
+            const environmentHeight = parseInt(this._geo.height, 10);
+            if (parseInt(this.position.top, 10) + this.weight > environmentHeight) {
+                this.melt();
+                return;
             }
+            this.position.top += this.velocity;
+            const air = Math.cos(this.movementCoefficient);
+            this.position.left += air;
+            this.flakeEl.style.transform = `translate3d(${this.position.left}px, ${this.position.top}px, 0)`;
+            this.movementCoefficient += 0.01;
+        }
 
-            let timerId = setInterval(function () {
-                if (that.flakeEl.style.opacity > 0 && !that.isUpadingGeoCoord) {
-                    that.flakeEl.style.opacity -= 0.1;
+        melt() {
+            this.isMelting = true;
+            const waiting = SnowFlake.rand(1, this.weight);
+            const that = this;
+            if (!this.flakeEl.style.opacity) this.flakeEl.style.opacity = 1;
+            const timerId = setInterval(function () {
+                if (that.flakeEl.style.opacity > 0 && !that.isUpdatingGeoCoord) {
+                    that.flakeEl.style.opacity = Math.max(0, that.flakeEl.style.opacity - 0.1);
                 } else {
                     clearInterval(timerId);
-                    that.refreshFlake();
+                    that.refresh();
                     that.isMelting = false;
-                    that.isUpadingGeoCoord = false;
+                    that.isUpdatingGeoCoord = false;
                 }
             }, waiting * 100);
         }
-
-        return SnowFlake;
-    }());
-
-    /** End of Private functions region */
-
-    /** Util functions */
-
-    function generateRandomNumber(min, max, round) {
-        let num = Math.random() * (+max - +min) + +min;
-        return !round ? num : Math.floor(num);
     }
+
+    class CloudClass {
+        constructor(environment, options = {}) {
+            if (!environment) throw new Error('Environment/container required');
+            this.container = environment;
+            this.container.style.overflow = 'hidden';
+            this.options = Object.assign({ flakes: 500, speed: 1 }, options);
+            this.flakes = [];
+            this._docFragment = document.createDocumentFragment();
+            this._running = false;
+            this._rafId = null;
+            this._onResize = this._onResize.bind(this);
+            this._geo = this._getGeo();
+            this._createFlakes();
+            window.addEventListener('resize', this._onResize);
+        }
+
+        _getGeo() {
+            return {
+                width: this.container.style.width || this.container.offsetWidth,
+                height: this.container.style.height || this.container.offsetHeight
+            };
+        }
+
+        _createFlakes() {
+            const geo = this._geo;
+            for (let i = 0; i < this.options.flakes; i++) {
+                const f = new SnowFlake(this._docFragment, geo);
+                this.flakes.push(f);
+            }
+            this.container.appendChild(this._docFragment);
+        }
+
+        _onResize() {
+            const geo = this._getGeo();
+            if (geo.width === this._geo.width && geo.height === this._geo.height) return;
+            this._geo = geo;
+            this.flakes.forEach(f => f.refreshGeoCoord(geo));
+        }
+
+        start() {
+            if (this._running) return;
+            this._running = true;
+            const loop = () => {
+                this.flakes.forEach(f => f.fall());
+                this._rafId = requestAnimationFrame(loop);
+            };
+            loop();
+        }
+
+        rain() {
+            this.start();
+        }
+
+        stop() {
+            this._running = false;
+            if (this._rafId) cancelAnimationFrame(this._rafId);
+            this._rafId = null;
+        }
+
+        destroy() {
+            this.stop();
+            window.removeEventListener('resize', this._onResize);
+            this.flakes.forEach(f => {
+                if (f.flakeEl && f.flakeEl.parentNode) f.flakeEl.parentNode.removeChild(f.flakeEl);
+            });
+            this.flakes = [];
+        }
+    }
+
+    const Cloud = CloudClass;
 
     /**
      * First I used the setInterval, but it has many problems,
      * Then I simulate a timer by a loop and setTimeout,
-     * but agian it has some problems, so I googling and I find a better way to do animations in JS
+     * but again it has some problems, so I googling and I find a better way to do animations in JS
      * More info about this:
      * https://www.paulirish.com/2011/requestanimationframe-for-smart-animating/
      */
-    window.requestAnimationFrame = window.requestAnimationFrame
-        || window.mozRequestAnimationFrame
-        || window.webkitRequestAnimationFrame
-        || window.msRequestAnimationFrame
-        || function (callback) { return setTimeout(callback, 1000 / 60) } // simulate calling code 60 
-
-    window.cancelAnimationFrame = window.cancelAnimationFrame
-        || window.mozCancelAnimationFrame
-        || function (requestID) { clearTimeout(requestID) }
-
-    /** End */
+    window.requestAnimationFrame = window.requestAnimationFrame || window.mozRequestAnimationFrame || window.webkitRequestAnimationFrame || window.msRequestAnimationFrame || function (cb) { return setTimeout(cb, 1000 / 60); };
+    window.cancelAnimationFrame = window.cancelAnimationFrame || window.mozCancelAnimationFrame || function (id) { clearTimeout(id); };
 
     return Cloud;
 }());
